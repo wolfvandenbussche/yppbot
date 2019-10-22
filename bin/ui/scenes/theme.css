@@ -1,0 +1,31 @@
+*{
+	color0:#DDDDDD;
+	color1:#3D4956;
+	color2:#515D6D;
+}
+
+#TopBar{
+	-fx-background-color:color1;
+}
+
+#Rest{
+	
+	-fx-background-color:color0;
+}
+
+#Main{
+	-fx-background-color:color1;
+}
+
+.Card{
+	-fx-background-color: color2;
+	-fx-border-radius:5.0em;
+	-fx-background-radius:5.0em;
+	-fx-text-fill:color0;
+	-fx-pref-width:240.0px;
+	-fx-pref-height:28.0px;
+}
+
+.Invisible{
+	-fx-background-color: rgba(255, 255, 255, 0.0);
+}

@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.image.Image?>
+<?import javafx.scene.image.ImageView?>
+<?import javafx.scene.layout.AnchorPane?>
+<?import javafx.scene.layout.VBox?>
+
+<AnchorPane id="Rest" stylesheets="@theme.css" xmlns="http://javafx.com/javafx/11.0.1" xmlns:fx="http://javafx.com/fxml/1" fx:controller="ui.controllers.MainController">
+	<children>
+		<VBox>
+			<children>
+				<AnchorPane id="TopBar" maxHeight="-Infinity" maxWidth="-Infinity" minHeight="-Infinity" minWidth="-Infinity" onMouseDragged="#moveOnMouseDragged" onMousePressed="#moveOnMousePressed" prefHeight="60.0" prefWidth="800.0" stylesheets="@theme.css">
+					<children>
+						<ImageView layoutX="753.0" layoutY="13.0" onMouseReleased="#close" AnchorPane.rightAnchor="10.0">
+							<image>
+								<Image url="@../../rsc/ui/close.png" />
+							</image>
+						</ImageView>
+						<ImageView layoutX="45.0" layoutY="14.0" onMouseReleased="#loadAutomaticScene" AnchorPane.leftAnchor="50.0">
+							<image>
+								<Image url="@../../rsc/ui/automatic.png" />
+							</image>
+						</ImageView>
+						<ImageView layoutX="285.0" layoutY="14.0" onMouseReleased="#loadAchievementsScene" AnchorPane.leftAnchor="350.0">
+							<image>
+								<Image url="@../../rsc/ui/achievements.png" />
+							</image>
+						</ImageView>
+						<ImageView layoutX="119.0" layoutY="13.0" onMouseReleased="#loadManualScene" AnchorPane.leftAnchor="150.0">
+							<image>
+								<Image url="@../../rsc/ui/manual.png" />
+							</image>
+						</ImageView>
+						<ImageView layoutX="689.0" layoutY="13.0" onMouseReleased="#minimize" AnchorPane.rightAnchor="60.0">
+							<image>
+								<Image url="@../../rsc/ui/minimize.png" />
+							</image>
+						</ImageView>
+						<ImageView layoutX="627.0" layoutY="14.0" onMouseReleased="#loadSettingsScene" AnchorPane.rightAnchor="110.0">
+							<image>
+								<Image url="@../../rsc/ui/settings.png" />
+							</image>
+						</ImageView>
+						<ImageView layoutX="328.0" layoutY="13.0" onMouseReleased="#loadCustomScene" AnchorPane.leftAnchor="250.0">
+							<image>
+								<Image url="@../../rsc/ui/custom.png" />
+							</image>
+						</ImageView>
+					</children>
+				</AnchorPane>
+				<AnchorPane id="Main" fx:id="Main" maxHeight="-Infinity" maxWidth="-Infinity" minHeight="-Infinity" minWidth="-Infinity" prefHeight="600.0" prefWidth="800.0" stylesheets="@theme.css">
+					<VBox.margin>
+						<Insets top="10.0" />
+					</VBox.margin>
+				</AnchorPane>
+			</children>
+		</VBox>
+	</children>
+</AnchorPane>
