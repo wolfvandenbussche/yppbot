@@ -4,6 +4,9 @@ target/
 # Bot runtime state
 bots.conf
 
+# Screenshots (local debug only)
+screenshots/
+
 # macOS
 .DS_Store
 

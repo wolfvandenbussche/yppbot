@@ -41,15 +41,26 @@ public class HeadlessBot {
             Thread.sleep(5000);
         }
 
-        status(server, "game found, starting in 3s");
-        Thread.sleep(3000);
+        status(server, "game found");
+        Mouse mouse = new Mouse();
+        GameStateManager gsm = new GameStateManager(mouse);
 
-        switch (mode) {
-            case "blacksmithing": runBlacksmithing(server); break;
-            case "bilging":       runBilging(server);       break;
-            default:
-                System.err.println("unknown mode: " + mode);
-                System.exit(1);
+        // Navigate through login / character select / in-game until we reach the puzzle
+        while (true) {
+            GameStateManager.State state = gsm.detect();
+            status(server, "state: " + state.name().toLowerCase().replace('_', ' '));
+
+            if (state == GameStateManager.State.BLACKSMITHING && mode.equals("blacksmithing")) {
+                runBlacksmithing(server);
+                // After the loop returns (shouldn't), re-detect
+                continue;
+            }
+            if (state == GameStateManager.State.BLACKSMITHING && mode.equals("bilging")) {
+                runBilging(server);
+                continue;
+            }
+
+            gsm.act(state, server);
         }
     }
 

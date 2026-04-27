@@ -138,7 +138,7 @@ public class BlacksmithingReader {
 			return null;
 		}
 		BufferedImage image = PuzzlePirates.getImage(rectangle);
-		if (image.getRGB(150, 16) != BLACKSMITHINGTITLE) {
+		if (image == null || image.getRGB(150, 16) != BLACKSMITHINGTITLE) {
 			return null;
 		}
 

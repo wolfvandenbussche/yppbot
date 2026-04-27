@@ -59,11 +59,23 @@ public class BotClient {
             HttpURLConnection conn = open("/screenshot");
             if (conn.getResponseCode() != 200) return null;
             try (InputStream in = conn.getInputStream()) {
-                return ImageIO.read(in);
+                byte[] bytes = in.readAllBytes();
+                BufferedImage img = ImageIO.read(new java.io.ByteArrayInputStream(bytes));
+                if (img != null) saveScreenshot(bytes);
+                return img;
             }
         } catch (Exception e) {
             return null;
         }
+    }
+
+    private void saveScreenshot(byte[] png) {
+        try {
+            java.io.File dir = new java.io.File("screenshots");
+            dir.mkdirs();
+            java.nio.file.Files.write(
+                    new java.io.File(dir, name + "-latest.png").toPath(), png);
+        } catch (Exception ignored) {}
     }
 
     private HttpURLConnection open(String path) throws Exception {

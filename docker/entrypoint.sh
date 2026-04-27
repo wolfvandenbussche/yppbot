@@ -6,82 +6,90 @@ STEAM_GUARD_CODE=${STEAM_GUARD_CODE:-}
 GAME_APPID=${GAME_APPID:-99910}
 BOT_PORT=${BOT_PORT:-9001}
 MODE=${MODE:-blacksmithing}
-GAME_DIR=/steam-data/game
-CRED_DIR=/steam-data/credentials
 
-mkdir -p "$GAME_DIR" "$CRED_DIR"
+export HOME=/steam-data/home
+mkdir -p "$HOME"
 
-# Status file that the monitor can read from docker logs
 status() { echo "[status] $1"; }
+
+# ── Virtual display ────────────────────────────────────────────────────────────
 
 status "Starting virtual display..."
 Xvfb :1 -screen 0 1920x1080x24 -nolisten tcp &
 export DISPLAY=:1
 sleep 2
 
-# Build DepotDownloader args
-DD_ARGS=(
-    -app "$GAME_APPID"
-    -username "$STEAM_USER"
-    -password "$STEAM_PASS"
-    -dir "$GAME_DIR"
-    -remember-password
-)
+# ── Steam login ────────────────────────────────────────────────────────────────
 
-status "Downloading game (app $GAME_APPID)..."
+status "Starting Steam..."
+export STEAM_RUNTIME=0
+steam -no-cef-sandbox -login "$STEAM_USER" "$STEAM_PASS" \
+    > /steam-data/steam.log 2>&1 &
+STEAM_PID=$!
 
-# Point HOME at the persistent volume so DepotDownloader saves its login key
-# to ~/.config/DepotDownloader/account.config inside the volume (survives container restarts)
-export HOME="$CRED_DIR"
-mkdir -p "$CRED_DIR"
-cd "$CRED_DIR"
-if [ -n "$STEAM_GUARD_CODE" ]; then
-    echo "$STEAM_GUARD_CODE" | /opt/depotdownloader/DepotDownloader "${DD_ARGS[@]}"
-else
-    /opt/depotdownloader/DepotDownloader "${DD_ARGS[@]}"
-fi
-DD_EXIT=$?
+LOGINUSERS="$HOME/.steam/steam/config/loginusers.vdf"
+LOGIN_TIMEOUT=120
+WAITED=0
+LOGGED_IN=false
 
-if [ $DD_EXIT -ne 0 ]; then
-    status "STEAM_GUARD_REQUIRED"
-    echo "[setup] Check your email and restart with STEAM_GUARD_CODE env var set."
-    exit $DD_EXIT
-fi
+while [ $WAITED -lt $LOGIN_TIMEOUT ]; do
+    sleep 3
+    WAITED=$((WAITED + 3))
 
-status "Game ready, launching..."
+    # Steam Guard dialog (native X11 window Steam shows on first login)
+    GUARD_WIN=$(xdotool search --name "Steam Guard" 2>/dev/null || true)
+    if [ -n "$GUARD_WIN" ]; then
+        if [ -n "$STEAM_GUARD_CODE" ]; then
+            status "Entering Steam Guard code..."
+            xdotool windowfocus "$GUARD_WIN"
+            xdotool type --delay 150 "$STEAM_GUARD_CODE"
+            xdotool key Return
+            STEAM_GUARD_CODE=""
+        else
+            status "STEAM_GUARD_REQUIRED"
+            kill "$STEAM_PID" 2>/dev/null || true
+            exit 1
+        fi
+    fi
 
-JAVA="$GAME_DIR/java_vm/bin/java"
-GETDOWN="$GAME_DIR/getdown-dop.jar"
+    # Login success: loginusers.vdf is written once Steam has an active session
+    if [ -f "$LOGINUSERS" ] && grep -qi "\"$STEAM_USER\"" "$LOGINUSERS" 2>/dev/null; then
+        LOGGED_IN=true
+        break
+    fi
 
-if [ -f "$GETDOWN" ] && [ -f "$JAVA" ]; then
-    status "Launching via getdown (will download and start client)..."
-    chmod +x "$JAVA"
-    "$JAVA" -jar "$GETDOWN" "$GAME_DIR" &
-else
-    # Fallback: look for a shell launcher
-    LAUNCHER=""
-    for candidate in \
-        "$GAME_DIR/PuzzlePirates.sh" \
-        "$GAME_DIR/puzzlepirates.sh" \
-        "$GAME_DIR/start.sh" \
-        "$GAME_DIR/run.sh" \
-        "$GAME_DIR/launch.sh"; do
-        [ -f "$candidate" ] && LAUNCHER="$candidate" && break
-    done
-    [ -z "$LAUNCHER" ] && LAUNCHER=$(find "$GAME_DIR" -maxdepth 2 -name "*.sh" -type f | head -1)
-
-    if [ -n "$LAUNCHER" ]; then
-        status "Launching $LAUNCHER"
-        chmod +x "$LAUNCHER"
-        bash "$LAUNCHER" &
-    else
-        status "ERROR: no launcher found in $GAME_DIR"
-        find "$GAME_DIR" -maxdepth 3 -type f | head -20
+    if ! kill -0 "$STEAM_PID" 2>/dev/null; then
+        status "Steam exited unexpectedly"
+        cat /steam-data/steam.log
         exit 1
     fi
+done
+
+if [ "$LOGGED_IN" = "false" ]; then
+    status "Steam login timed out after ${LOGIN_TIMEOUT}s"
+    cat /steam-data/steam.log
+    exit 1
 fi
 
-status "starting bot"
+status "Steam logged in"
+
+# ── Game ───────────────────────────────────────────────────────────────────────
+
+APPMANIFEST="$HOME/.steam/steam/steamapps/appmanifest_${GAME_APPID}.acf"
+if [ ! -f "$APPMANIFEST" ]; then
+    status "Installing game $GAME_APPID (first run, may take a while)..."
+fi
+
+status "Launching game $GAME_APPID..."
+steam -applaunch "$GAME_APPID"
+
+# Give the game time to start before the bot tries to find its window
+status "Waiting for game to start..."
+sleep 20
+
+# ── Bot ────────────────────────────────────────────────────────────────────────
+
+status "Starting bot..."
 exec java -jar /bot/yppbot.jar \
     --window "Puzzle Pirates" \
     --mode   "$MODE" \
