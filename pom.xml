@@ -1,0 +1,87 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                             http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>com.yppbot</groupId>
+  <artifactId>yppbot</artifactId>
+  <version>1.0-SNAPSHOT</version>
+
+  <properties>
+    <maven.compiler.source>8</maven.compiler.source>
+    <maven.compiler.target>8</maven.compiler.target>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+  </properties>
+
+  <build>
+    <!-- Keep existing source layout rather than moving everything -->
+    <sourceDirectory>src</sourceDirectory>
+
+    <resources>
+      <!-- Include rsc/ (piece templates etc.) at the classpath root -->
+      <resource>
+        <directory>src</directory>
+        <includes><include>rsc/**</include></includes>
+      </resource>
+    </resources>
+
+    <plugins>
+
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.11.0</version>
+        <configuration>
+          <excludes>
+            <!-- Legacy Eclipse UI (JavaFX + Win32, replaced by headless bot) -->
+            <exclude>ui/**</exclude>
+            <!-- Win32-only window manager, replaced by LinuxWindowManager -->
+            <exclude>utility/ExternalWindowManager.java</exclude>
+            <!-- Unit tests live in src/testing but belong in src/test -->
+            <exclude>testing/**</exclude>
+          </excludes>
+        </configuration>
+      </plugin>
+
+      <!-- Run the monitor: mvn compile exec:java -->
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>exec-maven-plugin</artifactId>
+        <version>3.1.0</version>
+        <configuration>
+          <mainClass>monitor.BotMonitor</mainClass>
+        </configuration>
+      </plugin>
+
+      <!-- Package everything into one fat JAR -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-assembly-plugin</artifactId>
+        <version>3.6.0</version>
+        <configuration>
+          <finalName>yppbot</finalName>
+          <appendAssemblyId>false</appendAssemblyId>
+          <descriptorRefs>
+            <descriptorRef>jar-with-dependencies</descriptorRef>
+          </descriptorRefs>
+          <!-- Default main class for `java -jar` is the bot -->
+          <archive>
+            <manifest>
+              <mainClass>bot.HeadlessBot</mainClass>
+            </manifest>
+          </archive>
+        </configuration>
+        <executions>
+          <execution>
+            <id>make-assembly</id>
+            <phase>package</phase>
+            <goals><goal>single</goal></goals>
+          </execution>
+        </executions>
+      </plugin>
+
+    </plugins>
+  </build>
+
+</project>

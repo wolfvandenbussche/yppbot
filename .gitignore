@@ -1,0 +1,15 @@
+# Maven build output
+target/
+
+# Bot runtime state
+bots.conf
+
+# macOS
+.DS_Store
+
+# IntelliJ / Eclipse
+.idea/
+*.iml
+.classpath
+.project
+.settings/

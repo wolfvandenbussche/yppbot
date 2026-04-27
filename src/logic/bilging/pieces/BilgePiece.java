@@ -2,42 +2,20 @@ package logic.bilging.pieces;
 
 import java.util.Random;
 
-import javafx.animation.FadeTransition;
-import javafx.scene.image.Image;
-import javafx.scene.image.ImageView;
-import javafx.util.Duration;
-import ui.scenes.ResourceLoader;
-
 public abstract class BilgePiece {
 
-	private ImageView imageView;
-	private ResourceLoader resourceLoader;
 	private BilgePieces piece;
 
 	public BilgePiece(BilgePieces piece) {
 		this.piece = piece;
-		
 	}
-	
-	public BilgePiece() {
-		imageView = new ImageView();
-	}
-	
-	public abstract String toString();
-	
-	public abstract int toInt();
 
-	public ImageView getImageView() {
-		resourceLoader = new ResourceLoader();
-		Image image = new Image(resourceLoader.getResource("/bilging/rsc/" + piece.toString().toLowerCase() + ".png"));
-		imageView = new ImageView();
-		imageView.setImage(image);
-		FadeTransition ft = new FadeTransition(Duration.millis(1000), imageView);
-		ft.setFromValue(0.0);
-		ft.setToValue(1.0);
-		ft.play();
-		return imageView;
-	} 
+	public BilgePiece() {
+	}
+
+	public abstract String toString();
+
+	public abstract int toInt();
 
 	public final static int RARE_CHANCE = 50;
 	
