@@ -5,13 +5,17 @@ RUN dpkg --add-architecture i386 && \
     apt-get update && \
     apt-get install -y \
         wget curl ca-certificates unzip \
+        software-properties-common && \
+    add-apt-repository -y multiverse && \
+    apt-get update && \
+    echo steam steam/question select "I AGREE" | debconf-set-selections && \
+    echo steam steam/license note '' | debconf-set-selections && \
+    apt-get install -y \
         xvfb xdotool scrot \
         libxi6 libxrender1 libxtst6 libxext6 libx11-6 libxrandr2 \
-        openjdk-17-jre-headless && \
-    curl -sL "https://cdn.akamai.steamstatic.com/client/installer/steam_latest.deb" \
-        -o /tmp/steam.deb && \
-    apt-get install -y /tmp/steam.deb && \
-    rm /tmp/steam.deb && \
+        openjdk-17-jre-headless \
+        steamcmd \
+        steam && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 VOLUME /steam-data
