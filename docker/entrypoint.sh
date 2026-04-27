@@ -8,6 +8,8 @@ BOT_PORT=${BOT_PORT:-9001}
 MODE=${MODE:-blacksmithing}
 
 export HOME=/steam-data/home
+export PATH="/usr/games:$PATH"
+export STEAM_RUNTIME=0
 mkdir -p "$HOME"
 
 status() { echo "[status] $1"; }
@@ -19,10 +21,21 @@ Xvfb :1 -screen 0 1920x1080x24 -nolisten tcp &
 export DISPLAY=:1
 sleep 2
 
+# ── Point Steam config at the pre-installed client baked into the image ────────
+# The steam launcher script checks for ~/.steam/steam -> installation dir.
+# If that symlink exists and steam.sh is present, it skips the 32-bit bootstrapper.
+
+mkdir -p "$HOME/.steam"
+if [ ! -e "$HOME/.steam/steam" ]; then
+    ln -s /opt/steam-client/.steam/debian-installation "$HOME/.steam/steam"
+fi
+if [ ! -e "$HOME/.steam/root" ]; then
+    ln -s /opt/steam-client/.steam/debian-installation "$HOME/.steam/root"
+fi
+
 # ── Steam login ────────────────────────────────────────────────────────────────
 
 status "Starting Steam..."
-export STEAM_RUNTIME=0
 steam -no-cef-sandbox -login "$STEAM_USER" "$STEAM_PASS" \
     > /steam-data/steam.log 2>&1 &
 STEAM_PID=$!
@@ -36,7 +49,6 @@ while [ $WAITED -lt $LOGIN_TIMEOUT ]; do
     sleep 3
     WAITED=$((WAITED + 3))
 
-    # Steam Guard dialog (native X11 window Steam shows on first login)
     GUARD_WIN=$(xdotool search --name "Steam Guard" 2>/dev/null || true)
     if [ -n "$GUARD_WIN" ]; then
         if [ -n "$STEAM_GUARD_CODE" ]; then
@@ -52,7 +64,6 @@ while [ $WAITED -lt $LOGIN_TIMEOUT ]; do
         fi
     fi
 
-    # Login success: loginusers.vdf is written once Steam has an active session
     if [ -f "$LOGINUSERS" ] && grep -qi "\"$STEAM_USER\"" "$LOGINUSERS" 2>/dev/null; then
         LOGGED_IN=true
         break
@@ -83,7 +94,6 @@ fi
 status "Launching game $GAME_APPID..."
 steam -applaunch "$GAME_APPID"
 
-# Give the game time to start before the bot tries to find its window
 status "Waiting for game to start..."
 sleep 20
 
