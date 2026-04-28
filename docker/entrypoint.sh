@@ -37,7 +37,7 @@ steam -no-cef-sandbox -login "$STEAM_USER" "$STEAM_PASS" \
 STEAM_PID=$!
 
 LOGINUSERS="$HOME/.steam/steam/config/loginusers.vdf"
-LOGIN_TIMEOUT=120
+LOGIN_TIMEOUT=300
 WAITED=0
 LOGGED_IN=false
 
