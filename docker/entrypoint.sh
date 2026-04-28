@@ -1,16 +1,12 @@
 #!/bin/bash
 
-STEAM_USER=${STEAM_USER:?STEAM_USER is required}
-STEAM_PASS=${STEAM_PASS:?STEAM_PASS is required}
-STEAM_GUARD_CODE=${STEAM_GUARD_CODE:-}
-GAME_APPID=${GAME_APPID:-99910}
+YPP_USER=${YPP_USER:?YPP_USER is required}
+YPP_PASS=${YPP_PASS:?YPP_PASS is required}
+YPP_OCEAN=${YPP_OCEAN:-cerulean}
 BOT_PORT=${BOT_PORT:-9001}
 MODE=${MODE:-blacksmithing}
 
-export HOME=/steam-data/home
-export PATH="/usr/games:$PATH"
-export STEAM_RUNTIME=0
-mkdir -p "$HOME"
+export DISPLAY=:1
 
 status() { echo "[status] $1"; }
 
@@ -18,80 +14,72 @@ status() { echo "[status] $1"; }
 
 status "Starting virtual display..."
 Xvfb :1 -screen 0 1920x1080x24 -nolisten tcp &
-export DISPLAY=:1
 sleep 2
 
-# ── Point Steam config at the pre-installed client baked into the image ────────
-# The steam launcher script checks for ~/.steam/steam -> installation dir.
-# If that symlink exists and steam.sh is present, it skips the 32-bit bootstrapper.
+# ── Resource bundle download (first run only) ──────────────────────────────────
+# rsrc bundles are large (~500 MB); downloaded once to a volume and reused.
 
-mkdir -p "$HOME/.steam"
-ln -sfn /opt/steam-client/.steam/debian-installation "$HOME/.steam/steam"
-ln -sfn /opt/steam-client/.steam/debian-installation "$HOME/.steam/root"
+RSRC_MARKER=/game-data/rsrc/.downloaded
+if [ ! -f "$RSRC_MARKER" ]; then
+    status "First run: downloading game resources via Getdown (this may take a while)..."
+    mkdir -p /game-data/rsrc-tmp
+    cp /game/getdown.txt /game-data/rsrc-tmp/getdown.txt
+    java -jar /game/getdown.jar /game-data/rsrc-tmp 2>&1 | grep -v "^$" || true
+    mkdir -p /game-data/rsrc
+    cp -r /game-data/rsrc-tmp/rsrc/. /game-data/rsrc/ 2>/dev/null || true
+    touch "$RSRC_MARKER"
+    rm -rf /game-data/rsrc-tmp
+    status "Resources downloaded."
+fi
 
-# ── Steam login ────────────────────────────────────────────────────────────────
+# ── Launch game ────────────────────────────────────────────────────────────────
 
-status "Starting Steam..."
-steam -no-cef-sandbox -login "$STEAM_USER" "$STEAM_PASS" \
-    > /steam-data/steam.log 2>&1 &
-STEAM_PID=$!
+status "Launching Puzzle Pirates (ocean: $YPP_OCEAN)..."
+java \
+    -Xmx512M \
+    -Djava.library.path=/game/native21 \
+    -Dresource_dir=/game-data/rsrc \
+    -Dappdir=/game \
+    -Dswing.aatext=true \
+    -Dsun.java2d.xrender=true \
+    -cp "/game/code/*" \
+    com.threerings.yohoho.client.YoApp \
+    > /game-data/game.log 2>&1 &
+GAME_PID=$!
 
-LOGINUSERS="$HOME/.steam/steam/config/loginusers.vdf"
-LOGIN_TIMEOUT=300
+status "Waiting for game login screen..."
 WAITED=0
+LOGIN_TIMEOUT=120
 LOGGED_IN=false
 
 while [ $WAITED -lt $LOGIN_TIMEOUT ]; do
     sleep 3
     WAITED=$((WAITED + 3))
 
-    GUARD_WIN=$(xdotool search --name "Steam Guard" 2>/dev/null || true)
-    if [ -n "$GUARD_WIN" ]; then
-        if [ -n "$STEAM_GUARD_CODE" ]; then
-            status "Entering Steam Guard code..."
-            xdotool windowfocus "$GUARD_WIN"
-            xdotool type --delay 150 "$STEAM_GUARD_CODE"
-            xdotool key Return
-            STEAM_GUARD_CODE=""
-        else
-            status "STEAM_GUARD_REQUIRED"
-            kill "$STEAM_PID" 2>/dev/null || true
-            exit 1
-        fi
-    fi
-
-    if [ -f "$LOGINUSERS" ] && grep -qi "\"$STEAM_USER\"" "$LOGINUSERS" 2>/dev/null; then
+    WIN=$(xdotool search --name "Puzzle Pirates" 2>/dev/null | head -1 || true)
+    if [ -n "$WIN" ]; then
         LOGGED_IN=true
         break
     fi
 
-    if ! kill -0 "$STEAM_PID" 2>/dev/null; then
-        status "Steam exited unexpectedly"
-        cat /steam-data/steam.log
+    if ! kill -0 "$GAME_PID" 2>/dev/null; then
+        status "Game exited unexpectedly"
+        cat /game-data/game.log
         exit 1
     fi
 done
 
 if [ "$LOGGED_IN" = "false" ]; then
-    status "Steam login timed out after ${LOGIN_TIMEOUT}s"
-    cat /steam-data/steam.log
+    status "Game did not open within ${LOGIN_TIMEOUT}s"
+    cat /game-data/game.log
     exit 1
 fi
 
-status "Steam logged in"
+status "Game window found"
 
-# ── Game ───────────────────────────────────────────────────────────────────────
-
-APPMANIFEST="$HOME/.steam/steam/steamapps/appmanifest_${GAME_APPID}.acf"
-if [ ! -f "$APPMANIFEST" ]; then
-    status "Installing game $GAME_APPID (first run, may take a while)..."
-fi
-
-status "Launching game $GAME_APPID..."
-steam -applaunch "$GAME_APPID"
-
-status "Waiting for game to start..."
-sleep 20
+# TODO: automate login with YPP_USER / YPP_PASS via xdotool
+# For now, log the credentials so we can verify the window appeared
+status "YPP_USER=$YPP_USER ocean=$YPP_OCEAN"
 
 # ── Bot ────────────────────────────────────────────────────────────────────────
 

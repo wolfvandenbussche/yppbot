@@ -1,6 +1,11 @@
 # Maven build output
 target/
 
+# Game client files (game/getdown.jar is committed; everything else is downloaded)
+game/code/
+game/native21/
+game/getdown.txt
+
 # Bot runtime state
 bots.conf
 

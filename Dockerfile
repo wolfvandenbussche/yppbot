@@ -1,38 +1,33 @@
-# hadolint ignore=DL3029
-FROM --platform=linux/amd64 ubuntu:22.04
+FROM ubuntu:22.04
 ENV DEBIAN_FRONTEND=noninteractive
 
-RUN dpkg --add-architecture i386 && \
-    apt-get update && \
-    apt-get install -y software-properties-common && \
-    add-apt-repository -y multiverse && \
-    apt-get update && \
-    echo steam steam/question select "I AGREE" | debconf-set-selections && \
-    echo steam steam/license note '' | debconf-set-selections && \
+RUN apt-get update && \
     apt-get install -y \
-        xvfb xdotool scrot \
+        xvfb xdotool scrot curl \
+        openjdk-21-jre-headless \
         libxi6 libxrender1 libxtst6 libxext6 libx11-6 libxrandr2 \
-        openjdk-17-jre-headless \
-        steam && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
+        libopenal1 \
+        libgl1 libglu1-mesa \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Pre-bootstrap Steam during build (requires real x86_64 — runs fine on GitHub Actions).
-# The 32-bit bootstrapper downloads the full 64-bit Steam client to /opt/steam-client.
-# At container startup the entrypoint symlinks ~/.steam here, skipping the bootstrapper.
-RUN mkdir -p /opt/steam-client && \
-    Xvfb :99 -screen 0 1024x768x16 -nolisten tcp & \
-    HOME=/opt/steam-client DISPLAY=:99 STEAM_RUNTIME=0 \
-    /usr/games/steam -no-cef-sandbox & STEAM_PID=$! && \
-    for i in $(seq 60); do \
-        sleep 5; \
-        [ -f /opt/steam-client/.steam/debian-installation/steam.sh ] && echo "Bootstrap done" && break; \
-        echo "  waiting... ($i/60)"; \
-    done; \
-    kill $STEAM_PID 2>/dev/null || true; \
-    pkill Xvfb 2>/dev/null || true; \
-    ls /opt/steam-client/.steam/debian-installation/steam.sh
+# Download the Puzzle Pirates code jars and Linux natives (no Steam required)
+ENV YPP_BASE=https://gamemedia.puzzlepirates.com/ec2/yoclient/20260419161103
+RUN mkdir -p /game/code /game/native21 && \
+    curl -sL "$YPP_BASE/code/config.jar"                    -o /game/code/config.jar && \
+    curl -sL "$YPP_BASE/code/yohoho-boot.jar"               -o /game/code/yohoho-boot.jar && \
+    curl -sL "$YPP_BASE/code/yoclient-dop.jar"              -o /game/code/yoclient-dop.jar && \
+    curl -sL "$YPP_BASE/code/lwjgl-natives-linux.jar"       -o /game/code/lwjgl-natives-linux.jar && \
+    curl -sL "$YPP_BASE/code/lwjgl-openal-natives-linux.jar" -o /game/code/lwjgl-openal-natives-linux.jar && \
+    curl -sL "$YPP_BASE/code/lwjgl-opengl-natives-linux.jar" -o /game/code/lwjgl-opengl-natives-linux.jar && \
+    curl -sL "$YPP_BASE/code/lwjgl-glfw-natives-linux.jar"  -o /game/code/lwjgl-glfw-natives-linux.jar && \
+    curl -sL "$YPP_BASE/native21/libfroth.so"               -o /game/native21/libfroth.so
 
-VOLUME /steam-data
+# Copy getdown launcher so we can fetch rsrc bundles on first run
+COPY game/getdown.jar /game/getdown.jar
+# Copy current getdown.txt so getdown knows which version/files to download
+RUN curl -sL "$YPP_BASE/getdown.txt" -o /game/getdown.txt
+
+VOLUME /game-data
 EXPOSE 9001
 
 COPY target/yppbot.jar /bot/yppbot.jar
