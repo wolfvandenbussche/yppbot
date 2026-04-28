@@ -26,12 +26,8 @@ sleep 2
 # If that symlink exists and steam.sh is present, it skips the 32-bit bootstrapper.
 
 mkdir -p "$HOME/.steam"
-if [ ! -e "$HOME/.steam/steam" ]; then
-    ln -s /opt/steam-client/.steam/debian-installation "$HOME/.steam/steam"
-fi
-if [ ! -e "$HOME/.steam/root" ]; then
-    ln -s /opt/steam-client/.steam/debian-installation "$HOME/.steam/root"
-fi
+ln -sfn /opt/steam-client/.steam/debian-installation "$HOME/.steam/steam"
+ln -sfn /opt/steam-client/.steam/debian-installation "$HOME/.steam/root"
 
 # ── Steam login ────────────────────────────────────────────────────────────────
 
