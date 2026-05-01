@@ -1,14 +1,18 @@
 #!/bin/bash
 
-YPP_USER=${YPP_USER:?YPP_USER is required}
-YPP_PASS=${YPP_PASS:?YPP_PASS is required}
-YPP_OCEAN=${YPP_OCEAN:-cerulean}
+STEAM_USER=${STEAM_USER:?STEAM_USER is required}
+STEAM_PASS=${STEAM_PASS:?STEAM_PASS is required}
 BOT_PORT=${BOT_PORT:-9001}
 MODE=${MODE:-blacksmithing}
 
 export DISPLAY=:1
+export HOME=/root
 
 status() { echo "[status] $1"; }
+
+# Clean up stale lock/pipe files left by docker commit so Xvfb and Steam start fresh
+rm -f /tmp/.X1-lock /tmp/.X11-unix/X1 \
+      /root/.steam/steam.pipe /root/.steam/steam.pid 2>/dev/null || true
 
 # ── Virtual display ────────────────────────────────────────────────────────────
 
@@ -16,44 +20,82 @@ status "Starting virtual display..."
 Xvfb :1 -screen 0 1920x1080x24 -nolisten tcp &
 sleep 2
 
-# ── Set up game client directory ───────────────────────────────────────────────
-# Getdown needs a single appdir containing getdown.txt, code/, native21/, rsrc/.
-# We keep code/ and native21/ baked in the image; rsrc/ lives on the volume.
+status "Starting VNC server on port 5900..."
+x11vnc -display :1 -nopw -forever -shared -rfbport 5900 -bg -o /tmp/x11vnc.log
 
-CLIENT_DIR=/game-data/client
-mkdir -p "$CLIENT_DIR"
+# ── Steam ──────────────────────────────────────────────────────────────────────
 
-# Copy immutable files from image (fast, already present)
-cp /game/getdown.txt "$CLIENT_DIR/getdown.txt"
-cp /game/getdown.jar "$CLIENT_DIR/getdown.jar"
+status "Starting Steam ($STEAM_USER)..."
+steam -login "$STEAM_USER" "$STEAM_PASS" -silent -no-browser &
 
-mkdir -p "$CLIENT_DIR/code"
-cp /game/code/* "$CLIENT_DIR/code/"
+# Wait for Steam to fully initialise — it self-updates on first run which takes a while.
+# A reliable ready signal is the Steam IPC pipe or the steamapps directory appearing.
+status "Waiting for Steam to be ready (first run downloads ~500 MB, may take several minutes)..."
+STEAM_WAITED=0
+while [ $STEAM_WAITED -lt 600 ]; do
+    sleep 5
+    STEAM_WAITED=$((STEAM_WAITED + 5))
+    # Pipe must exist AND steam process must still be alive (stale pipe = crashed steam)
+    if [ -e "/root/.steam/steam.pipe" ] && [ -f "/root/.steam/steam.pid" ]; then
+        STEAM_PID=$(cat /root/.steam/steam.pid 2>/dev/null)
+        if kill -0 "$STEAM_PID" 2>/dev/null; then
+            status "Steam running (PID $STEAM_PID) after ${STEAM_WAITED}s"
+            break
+        fi
+    fi
+done
+# Let Steam log in to the Steam Network before launching the game
+sleep 20
 
-mkdir -p "$CLIENT_DIR/native21"
-cp /game/native21/* "$CLIENT_DIR/native21/"
+# ── Launch game ────────────────────────────────────────────────────────────────
 
-# rsrc is large; download once and reuse from volume
-if [ ! -f "$CLIENT_DIR/rsrc/.downloaded" ]; then
-    status "First run: Getdown will download game resources (~500 MB)..."
+GAMEDIR="/root/.local/share/Steam/steamapps/common/Puzzle Pirates"
+REAPER="/root/.local/share/Steam/ubuntu12_32/reaper"
+JAVA="$GAMEDIR/java_vm/bin/java"
+CP="$GAMEDIR/code/config.jar:$GAMEDIR/code/yohoho-boot.jar:$GAMEDIR/code/yoclient-dop.jar:$GAMEDIR/code/lwjgl-natives-linux.jar:$GAMEDIR/code/lwjgl-openal-natives-linux.jar:$GAMEDIR/code/lwjgl-opengl-natives-linux.jar:$GAMEDIR/code/lwjgl-glfw-natives-linux.jar"
+export SteamAppId=99910 XDG_RUNTIME_DIR=/tmp/runtime-root
+mkdir -p "$XDG_RUNTIME_DIR"
+
+# Write steam_appid.txt so SteamAPI_Init() can find the app ID
+echo "99910" > "$GAMEDIR/steam_appid.txt"
+
+# Download game code if not yet present (getdown fetches code/*.jar from PP servers).
+# We wait for getdown to EXIT — it exits naturally after download + fork of YoApp.
+if [ ! -f "$GAMEDIR/code/yohoho-boot.jar" ] || [ ! -s "$GAMEDIR/code/yohoho-boot.jar" ]; then
+    status "Game code missing — running getdown to download it (one-time, ~300 MB)..."
+    cd "$GAMEDIR"
+    "$JAVA" -jar "$GAMEDIR/getdown-dop.jar" "$GAMEDIR" >/dev/null 2>&1 &
+    GETDOWN_PID=$!
+    WAITED=0
+    while [ $WAITED -lt 600 ] && kill -0 $GETDOWN_PID 2>/dev/null; do
+        sleep 10; WAITED=$((WAITED + 10))
+        status "  getdown: ${WAITED}s elapsed..."
+    done
+    status "Getdown finished after ${WAITED}s — killing any YoApp it launched"
+    pkill -f "YoApp\|yohoho-boot" 2>/dev/null || true
+    sleep 3
 fi
 
-# ── Launch via Getdown ─────────────────────────────────────────────────────────
-# Getdown verifies all files, downloads anything missing, then launches YoApp
-# with the exact JVM args from getdown.txt (handles %APPDIR% substitution).
-
-status "Launching game via Getdown..."
-java -jar "$CLIENT_DIR/getdown.jar" "$CLIENT_DIR" \
-    > /game-data/getdown.log 2>&1 &
-GAME_PID=$!
-
-# Mark rsrc as downloaded after first successful launch setup
-touch "$CLIENT_DIR/rsrc/.downloaded" 2>/dev/null || true
+if [ -f "$REAPER" ] && [ -f "$GAMEDIR/code/yohoho-boot.jar" ]; then
+    status "Launching Puzzle Pirates via reaper..."
+    "$REAPER" SteamLaunch AppId=99910 -- \
+        "$JAVA" \
+            -classpath "$CP" \
+            -Dcom.threerings.getdown=true -Xmx512M \
+            -Djava.library.path="$GAMEDIR/native21" \
+            -Dresource_dir="$GAMEDIR/rsrc" \
+            -Ddevclient=false -Dappdir="$GAMEDIR" \
+            -Dswing.aatext=true -XX:+EnableDynamicAgentLoading -Dsun.java2d.xrender=true \
+            com.threerings.yohoho.client.YoApp &
+else
+    status "Falling back to steam -applaunch"
+    steam -applaunch 99910 &
+fi
 
 status "Waiting for game window..."
 WAITED=0
-LOGIN_TIMEOUT=300
-LOGGED_IN=false
+# First run: Steam needs to download the game (~500 MB) before the window appears
+LOGIN_TIMEOUT=900
 
 while [ $WAITED -lt $LOGIN_TIMEOUT ]; do
     sleep 3
@@ -61,30 +103,16 @@ while [ $WAITED -lt $LOGIN_TIMEOUT ]; do
 
     WIN=$(xdotool search --name "Puzzle Pirates" 2>/dev/null | head -1 || true)
     if [ -n "$WIN" ]; then
-        LOGGED_IN=true
         break
-    fi
-
-    if ! kill -0 "$GAME_PID" 2>/dev/null; then
-        status "Game exited unexpectedly"
-        cat /game-data/getdown.log
-        exit 1
     fi
 done
 
-if [ "$LOGGED_IN" = "false" ]; then
+if [ -z "$WIN" ]; then
     status "Game did not open within ${LOGIN_TIMEOUT}s"
-    cat /game-data/getdown.log
     exit 1
 fi
 
-status "Game window found. Logging in as $YPP_USER..."
-
-# TODO: automate login with xdotool
-
-# ── Bot ────────────────────────────────────────────────────────────────────────
-
-status "Starting bot..."
+status "Game window found. Starting bot..."
 exec java -jar /bot/yppbot.jar \
     --window "Puzzle Pirates" \
     --mode   "$MODE" \

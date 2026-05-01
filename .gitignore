@@ -12,6 +12,12 @@ bots.conf
 # Screenshots (local debug only)
 screenshots/
 
+# Local debug/runtime artifacts
+container.log
+container-err.log
+docker-build.log
+screen.png
+
 # macOS
 .DS_Store
 

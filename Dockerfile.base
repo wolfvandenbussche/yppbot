@@ -1,0 +1,71 @@
+# ── Build stage ────────────────────────────────────────────────────────────────
+FROM maven:3.9-eclipse-temurin-21 AS builder
+WORKDIR /build
+COPY pom.xml .
+COPY src/ src/
+RUN mvn package -q
+
+# ── Runtime stage ──────────────────────────────────────────────────────────────
+FROM ubuntu:22.04
+ENV DEBIAN_FRONTEND=noninteractive
+ENV HOME=/root
+
+RUN dpkg --add-architecture i386
+
+RUN apt-get update && \
+    apt-get install -y curl ca-certificates && \
+    curl -sL "https://cdn.cloudflare.steamstatic.com/client/installer/steam.deb" -o /tmp/steam.deb
+
+RUN apt-get install -y \
+        xvfb xdotool scrot netcat-openbsd \
+        openjdk-21-jre \
+        libxi6 libxrender1 libxtst6 libxext6 libx11-6 libxrandr2 \
+        libopenal1 libgl1 libglu1-mesa \
+        lib32gcc-s1 libstdc++6:i386 \
+        libgbm1:i386 libgl1-mesa-dri:i386 libgl1:i386 \
+        file lsof policykit-1 python3-apt xterm xz-utils \
+        /tmp/steam.deb \
+    && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/steam.deb
+
+# Remove Steam's root-user check (Docker containers run as root)
+RUN sed -i '/# Don.t allow running as root/,/^fi$/d' /usr/lib/steam/bin_steam.sh
+
+# Install steamcmd and bake game files into the image
+RUN mkdir -p /opt/steamcmd && \
+    curl -sqL "https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz" | tar -xz -C /opt/steamcmd
+
+# ARGs declared here so all heavy apt layers above stay cached when credentials change
+ARG STEAM_USER
+ARG STEAM_PASS
+
+RUN /opt/steamcmd/steamcmd.sh \
+        +login "$STEAM_USER" "$STEAM_PASS" \
+        +app_license_request 99910 \
+        +app_update 99910 validate \
+        +quit ; \
+    mkdir -p /root/.local/share && \
+    mv /root/Steam /root/.local/share/Steam
+
+
+# Install Steam runtime libs AFTER game download (preserves steamcmd cache above)
+# steam-libs-amd64/i386 pull in ~80 i386 packages — pre-installing avoids the
+# interactive steamdeps xterm prompt at container startup
+RUN apt-get update && \
+    apt-get install -y --no-remove steam-libs-amd64 steam-libs-i386 \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Stub out steamdeps — all packages now pre-installed, no interactive prompt needed
+RUN printf '#!/bin/bash\nexit 0\n' > /usr/bin/steamdeps && chmod +x /usr/bin/steamdeps
+
+# Install VNC server for remote inspection (own layer so game download cache is preserved)
+RUN apt-get update && \
+    apt-get install -y x11vnc \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+EXPOSE 9001
+
+COPY --from=builder /build/target/yppbot.jar /bot/yppbot.jar
+COPY docker/entrypoint.sh /entrypoint.sh
+RUN sed -i 's/\r//' /entrypoint.sh && chmod +x /entrypoint.sh
+
+ENTRYPOINT ["/entrypoint.sh"]
