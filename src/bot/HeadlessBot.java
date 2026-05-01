@@ -1,5 +1,8 @@
 package bot;
 
+import bot.flow.BilgingMissionFlow;
+import bot.flow.FlowContext;
+
 import java.awt.Point;
 import java.awt.Rectangle;
 import java.util.ArrayList;
@@ -40,19 +43,27 @@ public class HeadlessBot {
         while (!PuzzlePirates.isRunning()) {
             Thread.sleep(5000);
         }
+        status(server, "game found — mode: " + mode);
 
-        status(server, "game found");
+        FlowContext ctx = new FlowContext(server);
+
+        // ── Flow-based modes ──────────────────────────────────────────────────
+        switch (mode) {
+            case "bilging-mission":
+                new BilgingMissionFlow().run(ctx);
+                return;
+        }
+
+        // ── Legacy modes (direct puzzle runner, no navigation) ────────────────
         Mouse mouse = new Mouse();
         GameStateManager gsm = new GameStateManager(mouse);
 
-        // Navigate through login / character select / in-game until we reach the puzzle
         while (true) {
             GameStateManager.State state = gsm.detect();
             status(server, "state: " + state.name().toLowerCase().replace('_', ' '));
 
             if (state == GameStateManager.State.BLACKSMITHING && mode.equals("blacksmithing")) {
                 runBlacksmithing(server);
-                // After the loop returns (shouldn't), re-detect
                 continue;
             }
             if (state == GameStateManager.State.BLACKSMITHING && mode.equals("bilging")) {

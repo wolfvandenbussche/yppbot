@@ -1,0 +1,6 @@
+FROM yppbot-steam-base
+EXPOSE 9001
+COPY target/yppbot.jar /bot/yppbot.jar
+COPY docker/entrypoint.sh /entrypoint.sh
+RUN sed -i 's/\r//' /entrypoint.sh && chmod +x /entrypoint.sh
+ENTRYPOINT ["/entrypoint.sh"]
