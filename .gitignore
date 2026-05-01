@@ -15,6 +15,9 @@ screenshots/
 # macOS
 .DS_Store
 
+# Compiled Java bytecode
+*.class
+
 # IntelliJ / Eclipse
 .idea/
 *.iml
